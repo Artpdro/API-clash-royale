@@ -1,27 +1,73 @@
 import requests
 import json
+from urllib.parse import quote
+from pymongo import MongoClient
+import time
 
-URL_CARDS = 'https://api.clashroyale.com/v1/cards'
+CLAN_TAG     = "#QYGYYPYC"            
+MONGO_URI    = "mongodb+srv://admin:-@cluster0.sargdmz.mongodb.net/"  
+RATE_LIMIT   = 1.0                      
+BATTLE_LIMIT = 3                        
 
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer'
+    'Authorization': 'Bearer ='
 }
 
-def get_all_cards():
-    response = requests.get(URL_CARDS, headers=headers)
-    print(f"Status Code: {response.status_code}")
-    if response.status_code == 200:
-        data = response.json()
-        for card in data.get('items', []):
-            print('========================================')
-            print('Id:         ', card.get('id'))
-            print('Nome:       ', card.get('name'))
-            print('Max Level:  ', card.get('maxLevel'))
-            print('Imagem:     ', card.get('iconUrls', {}).get('medium'))
-            print('========================================')
-    else:
-        print("Erro na requisição:", response.text)
+URL_CLAN_MEMBERS = 'https://api.clashroyale.com/v1/clans/{tag}/members'
+URL_PLAYER       = 'https://api.clashroyale.com/v1/players/{tag}'
+URL_BATTLELOG    = 'https://api.clashroyale.com/v1/players/{tag}/battlelog'
 
-if __name__ == "__main__":
-    get_all_cards()
+client = MongoClient(MONGO_URI)
+db = client['clashroyale']
+col_players = db['players']
+col_battles = db['battles']
+
+col_players.create_index('tag', unique=True)
+col_battles.create_index([('battleTime', 1), ('playerTag', 1)], unique=True)
+
+def fetch_clan_members(clan_tag):
+    tag_enc = quote(clan_tag, safe='')
+    resp = requests.get(URL_CLAN_MEMBERS.format(tag=tag_enc), headers=headers)
+    resp.raise_for_status()
+    return resp.json().get('Items', [])
+
+def fetch_player_profile(player_tag):
+    tag_enc = quote(player_tag, safe='')
+    resp = requests.get(URL_PLAYER.format(tag=tag_enc), headers=headers)
+    resp.raise_for_status()
+    return resp.json()
+
+def fetch_player_battlelog(player_tag):
+    tag_enc = quote(player_tag, safe='')
+    resp = requests.get(URL_BATTLELOG.format(tag=tag_enc), headers=headers)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def save_all_data():
+    members = fetch_clan_members(CLAN_TAG)
+    print(f"Encontrados {len(members)} membros no clã {CLAN_TAG}")
+
+    for m in members:
+        tag = m['tag']
+        profile = fetch_player_profile(tag)
+        profile['playerTag'] = tag
+        col_players.replace_one({'tag': tag}, profile, upsert=True)
+
+        battles = fetch_player_battlelog(tag)[:BATTLE_LIMIT]
+        for battle in battles:
+            battle['playerTag'] = tag
+            col_battles.replace_one(
+                {'battleTime': battle['battleTime'], 
+                 'playerTag': tag},
+                battle,
+                upsert=True
+            )
+        print(f"Dados salvos para {tag}: perfil + {len(battles)} ultimas batalhas.")
+        time.sleep(RATE_LIMIT)
+
+    client.close()
+
+if __name__ == '__main__':
+    save_all_data()
