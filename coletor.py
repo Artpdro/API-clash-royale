@@ -5,14 +5,14 @@ from pymongo import MongoClient
 import time
 
 CLAN_TAG     = "#QYGYYPYC"
-MONGO_URI    = "mongodb+srv://admin:admin@cluster0.sargdmz.mongodb.net/"
+MONGO_URI    = "mongodb+srv://-:-@cluster0.sargdmz.mongodb.net/"
 RATE_LIMIT   = 1.0
 BATTLE_LIMIT = 3
 
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiIsImtpZCI6IjI4YTMxOGY3LTAwMDAtYTFlYi03ZmExLTJjNzQzM2M2Y2NhNSJ9.eyJpc3MiOiJzdXBlcmNlbGwiLCJhdWQiOiJzdXBlcmNlbGw6Z2FtZWFwaSIsImp0aSI6IjAxZDFiZjA2LTQxMzgtNDMwNy04Y2EzLTgzZTk1NWRmZDQyMSIsImlhdCI6MTc0NDkyNjg2MCwic3ViIjoiZGV2ZWxvcGVyLzJhNzRiOWNhLTUzMTEtNzZkNi01ZDlkLWUxZTZhOTdkY2I5NSIsInNjb3BlcyI6WyJyb3lhbGUiXSwibGltaXRzIjpbeyJ0aWVyIjoiZGV2ZWxvcGVyL3NpbHZlciIsInR5cGUiOiJ0aHJvdHRsaW5nIn0seyJjaWRycyI6WyIxNDMuMjA4LjEyOC4xMTYiXSwidHlwZSI6ImNsaWVudCJ9XX0.O6KN6B21CuFGF3ioF5b4-_ka-sUov3p7bjmjD_Qpwf6GqeVn45ToShBBxHTooFTJXZMxgJWIUjMoq2lOsemSWQ'
-}
+    'Authorization': 'Bearer 
+    }
 
 # ENDPOINTS
 URL_CLAN_MEMBERS = 'https://api.clashroyale.com/v1/clans/{tag}/members'
