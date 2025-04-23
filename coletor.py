@@ -3,6 +3,7 @@ import json
 from urllib.parse import quote
 from pymongo import MongoClient
 import time
+from datetime import datetime, timezone
 
 CLAN_TAG     = "#QYGYYPYC"
 MONGO_URI    = "mongodb+srv://-:-@cluster0.sargdmz.mongodb.net/"
@@ -11,87 +12,114 @@ BATTLE_LIMIT = 3
 
 headers = {
     'Content-Type': 'application/json',
-    'Authorization': 'Bearer 
-    }
+    'Authorization': 'Bearer --'
+}
 
-# ENDPOINTS
 URL_CLAN_MEMBERS = 'https://api.clashroyale.com/v1/clans/{tag}/members'
-URL_PLAYER        = 'https://api.clashroyale.com/v1/players/{tag}'
-URL_BATTLELOG     = 'https://api.clashroyale.com/v1/players/{tag}/battlelog'
-URL_CARDS         = 'https://api.clashroyale.com/v1/cards'
+URL_PLAYER       = 'https://api.clashroyale.com/v1/players/{tag}'
+URL_BATTLELOG    = 'https://api.clashroyale.com/v1/players/{tag}/battlelog'
+URL_CARDS        = 'https://api.clashroyale.com/v1/cards'
 
-client = MongoClient(MONGO_URI)
-db = client['clashroyale']
-col_players = db['players']
-col_battles = db['battles']
-col_cards   = db['cards']
+def connect_db(uri):
+    client = MongoClient(uri)
+    db = client['clashroyale']
+    return client, db
 
-col_players.create_index('tag', unique=True)
-col_battles.create_index([('battleTime', 1), ('playerTag', 1)], unique=True)
-col_cards.create_index('id', unique=True)
-
-
-def fetch_clan_members(clan_tag):
-    tag_enc = quote(clan_tag, safe='')
-    resp = requests.get(URL_CLAN_MEMBERS.format(tag=tag_enc), headers=headers)
+def fetch_clan_members(tag):
+    resp = requests.get(URL_CLAN_MEMBERS.format(tag=quote(tag, safe='')), headers=headers)
     resp.raise_for_status()
     return resp.json().get('items', [])
 
-def fetch_player_profile(player_tag):
-    tag_enc = quote(player_tag, safe='')
-    resp = requests.get(URL_PLAYER.format(tag=tag_enc), headers=headers)
-    resp.raise_for_status()
-    return resp.json()
 
-def fetch_player_battlelog(player_tag):
-    tag_enc = quote(player_tag, safe='')
-    resp = requests.get(URL_BATTLELOG.format(tag=tag_enc), headers=headers)
+def fetch_player_battlelog(tag):
+    resp = requests.get(URL_BATTLELOG.format(tag=quote(tag, safe='')), headers=headers)
     resp.raise_for_status()
-    return resp.json()
+    return resp.json()[:BATTLE_LIMIT]
+
 
 def fetch_all_cards():
     resp = requests.get(URL_CARDS, headers=headers)
     resp.raise_for_status()
     return resp.json().get('items', [])
 
+def process_battle(battle, player_tag):
+    dt = datetime.fromisoformat(battle['battleTime'].replace('Z', '+00:00'))
 
-def save_all_data():
-    print("coletando cartas...")
-    cards = fetch_all_cards()
-    print("Resposta da API (primeiras 2 cartas):")
-    print(cards[:2]) 
+    formatted_date = dt.strftime('%Y/%m/%d')
+    epoch_seconds = int(dt.replace(tzinfo=timezone.utc).timestamp())
 
-    if cards:
-        for card in cards:
-            col_cards.replace_one({'id': card['id']}, card, upsert=True)
-        print(f"✅ {len(cards)} cartas salvas na coleção 'cards'.")
+    team_list = battle.get('team', [])
+    opp_list = battle.get('opponent', [])
+    team = team_list[0] if isinstance(team_list, list) and team_list else {}
+    opp = opp_list[0] if isinstance(opp_list, list) and opp_list else {}
+
+    trophies_player = team.get('startingTrophies', 0)
+    trophies_opponent = opp.get('startingTrophies', 0)
+    trophy_diff = abs(trophies_player - trophies_opponent)
+
+    crowns_player = team.get('crowns', 0)
+    crowns_opponent = opp.get('crowns', 0)
+
+    if crowns_player > crowns_opponent:
+        winner = player_tag
+    elif crowns_player < crowns_opponent:
+        winner = opp.get('tag')
     else:
-        print("⚠️ Nenhuma carta recebida da API.")
+        winner = None
+        
+        
+        
+    battle['date'] = formatted_date
+    battle['timestampSeconds'] = epoch_seconds
+    battle['trophyDifference'] = trophy_diff
+    battle['towersDestroyed'] = crowns_player
+    battle['winner'] = winner
+    battle['playerTag'] = player_tag
+    return battle
 
-    members = fetch_clan_members(CLAN_TAG)
-    print(f"\n🔍 {len(members)} membros encontrados no clã {CLAN_TAG}")
+def save_cards(db):
+    col_cards = db['cards']
+    col_cards.create_index('id', unique=True)
+    cards = fetch_all_cards()
+    for card in cards:
+        col_cards.replace_one({'id': card['id']}, card, upsert=True)
+    print(f"✔️ {len(cards)} cartas salvas na coleção 'cards'.")
+
+
+
+
+def save_data(clan_tag):
+    client, db = connect_db(MONGO_URI)
+
+    print("Coletando e salvando cartas...")
+    save_cards(db)
+
+    col_battles = db['battles']
+    col_battles.create_index([('battleTime', 1), ('playerTag', 1)], unique=True)
+
+    members = fetch_clan_members(clan_tag)
+    print(f"Encontrados {len(members)} membros no clã {clan_tag}")
 
     for m in members:
         tag = m['tag']
-        print(f"\n📥 Coletando dados do jogador {tag}...")
+        print(f"Processando batalhas de {tag}...")
+        try:
+            battles = fetch_player_battlelog(tag)
+            processed = [process_battle(b, tag) for b in battles]
 
-        profile = fetch_player_profile(tag)
-        profile['playerTag'] = tag
-        col_players.replace_one({'tag': tag}, profile, upsert=True)
-
-        battles = fetch_player_battlelog(tag)[:BATTLE_LIMIT]
-        for battle in battles:
-            battle['playerTag'] = tag
-            col_battles.replace_one(
-                {'battleTime': battle['battleTime'], 'playerTag': tag},
-                battle,
-                upsert=True
-            )
-        print(f"✅ {len(battles)} batalhas salvas para {tag}")
+            for b in processed:
+                col_battles.replace_one(
+                    {'battleTime': b['battleTime'], 'playerTag': tag},
+                    b,
+                    upsert=True
+                )
+            print(f"✔️ {len(processed)} batalhas salvas para {tag}")
+        except Exception as e:
+            print(f"Erro ao processar {tag}: {e}")
         time.sleep(RATE_LIMIT)
 
     client.close()
-    print("\n Finalizado com sucesso.")
+    print("Concluído.")
 
 if __name__ == '__main__':
-    save_all_data()
+    save_data(CLAN_TAG)
