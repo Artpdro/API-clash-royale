@@ -48,9 +48,9 @@ class ClashRoyaleAnalytics:
         try:
             dt = datetime.strptime(date_str, "%Y-%m-%d")
             if field_name == "date":
-                return dt.strftime("%Y/%m/%d")  # Formato do campo 'date'
+                return dt.strftime("%Y/%m/%d") 
             elif field_name == "battleTime":
-                return dt.strftime("%Y%m%d") + "T000000.000Z"  # Formato inicial do battleTime
+                return dt.strftime("%Y%m%d") + "T000000.000Z"
         except ValueError:
             raise ValueError(f"Data inválida: {date_str}")
 
