@@ -83,7 +83,7 @@ def save_cards(db):
     cards = fetch_all_cards()
     for card in cards:
         col_cards.replace_one({'id': card['id']}, card, upsert=True)
-    print(f"✔️ {len(cards)} cartas salvas na coleção 'cards'.")
+    print(f" {len(cards)} cartas salvas na coleção 'cards'.")
 
 
 
@@ -91,7 +91,7 @@ def save_cards(db):
 def save_data(clan_tag):
     client, db = connect_db(MONGO_URI)
 
-    print("Coletando e salvando cartas...")
+    print("coletando e salvando cartas...")
     save_cards(db)
 
     col_battles = db['battles']
@@ -113,13 +113,28 @@ def save_data(clan_tag):
                     b,
                     upsert=True
                 )
-            print(f"✔️ {len(processed)} batalhas salvas para {tag}")
+            print(f" {len(processed)} batalhas salvas para {tag}")
         except Exception as e:
-            print(f"Erro ao processar {tag}: {e}")
+            print(f"erro ao processar {tag}: {e}")
         time.sleep(RATE_LIMIT)
 
     client.close()
     print("Concluído.")
 
+    def export_results_to_json(db_uri, output_file='clash_data.json', collections=None):
+
+    client, db = connect_db(db_uri)
+    data = {}
+    cols = collections or ['cards', 'battles']
+    for col_name in cols:
+        col = db[col_name]
+        records = list(col.find({}, {'_id': False}))
+        data[col_name] = records
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    client.close()
+    print(f"dados exportados para '{output_file}'.")
+
 if __name__ == '__main__':
     save_data(CLAN_TAG)
+    export_results_to_json(MONGO_URI, output_file='clash_results.json')
